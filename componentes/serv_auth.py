@@ -43,39 +43,92 @@ try:
         
         elif data[:5].decode() == 'sauth':
             print('Mensaje recibido:', data)
-            comando = data[5:15].decode()
-            payload = data[15:].decode()
+            comando = data[5:10].decode()
+            payload = data[10:].decode()
 
-            if comando == 'createuser':
+            if comando == 'regis':
                 try:
                     nombre, email, contraseña, rol = payload.split('|')
                     cursor.execute('INSERT INTO usuarios (nombre, email, contraseña, rol) VALUES (?, ?, ?, ?)', 
                                    (nombre, email, contraseña, rol))
+                    user_id = cursor.lastrowid
                     conn.commit()
-                    response = 'OK|Usuario creado'
+                    response = f'OK|{user_id}'
                 except sqlite3.IntegrityError as e:
                     response = f'ERR|{str(e)}'
                 except Exception as e:
                     response = f'ERR|{str(e)}'
 
-            elif comando == 'loginusers':
+            elif comando == 'login':
                 try:
-                    nombre, contraseña = payload.split('|')
-                    cursor.execute('SELECT * FROM usuarios WHERE nombre=? AND contraseña=?', (nombre, contraseña))
+                    email, contraseña = payload.split('|')
+                    cursor.execute('SELECT id_usuario FROM usuarios WHERE email=? AND contraseña=?', (email, contraseña))
                     user = cursor.fetchone()
                     if user:
-                        response = 'OK|Login exitoso'
+                        response = f'OK|{user[0]}'
                     else:
                         response = 'ERR|Credenciales inválidas'
                 except Exception as e:
                     response = f'ERR|{str(e)}'
+            elif comando == 'cpass':
+                try:
+                    id_usuario, nueva_contraseña = payload.split('|')
+                    cursor.execute('UPDATE usuarios SET contraseña = ? WHERE id_usuario = ?', (nueva_contraseña, id_usuario))
+                    conn.commit()
+                    response = 'OK|Contraseña actualizada'
+                except sqlite3.Error as e:
+                    response = f'ERR|{str(e)}'
+            elif comando == 'cname':
+                try:
+                    id_usuario, nuevo_nombre = payload.split('|')
+                    cursor.execute('UPDATE usuarios SET nombre = ? WHERE id_usuario = ?', (nuevo_nombre, id_usuario))
+                    conn.commit()
+                    response = 'OK|Nombre actualizado'
+                except sqlite3.IntegrityError as e:
+                    response = f'ERR|{str(e)}'
+                except sqlite3.Error as e:
+                    response = f'ERR|{str(e)}'
+            elif comando == 'cmail':
+                try:
+                    id_usuario, nuevo_email = payload.split('|')
+                    cursor.execute('UPDATE usuarios SET email = ? WHERE id_usuario = ?', (nuevo_email, id_usuario))
+                    conn.commit()
+                    response = 'OK|Email actualizado'
+                except sqlite3.IntegrityError as e:
+                    response = f'ERR|{str(e)}'
+                except sqlite3.Error as e:
+                    response = f'ERR|{str(e)}'
+            elif comando == 'delac':
+                try:
+                    id_usuario = payload
+                    cursor.execute('DELETE FROM usuarios WHERE id_usuario = ?', (id_usuario,))
+                    conn.commit()
+                    response = 'OK|Cuenta eliminada'
+                except sqlite3.Error as e:
+                    response = f'ERR|{str(e)}'
 
+            elif comando == 'ginfo':
+                try:
+                    id_usuario = payload
+                    cursor.execute('SELECT id_usuario, nombre, email, rol, fecha_creacion FROM usuarios WHERE id_usuario = ?', (id_usuario,))
+                    user = cursor.fetchone()
+                    if user:
+                        user_str = f'{user[0]}|{user[1]}|{user[2]}|{user[3]}|{user[4]}'
+                        response = f'OK|{user_str}'
+                    else:
+                        response = 'ERR|Usuario no encontrado'
+                except sqlite3.Error as e:
+                    response = f'ERR|{str(e)}'
             else:
                 response = 'ERR|Comando no reconocido'
 
             response_message = f'{len(response):05}{service}{response}'.encode()
             sock.sendall(response_message)
             print('Respuesta enviada:', response_message)
+
+
+
+
 
 
 finally:
