@@ -1,9 +1,9 @@
 import socket
 import sqlite3
 
-SERVICE_NAME = 'sbase'  # ✅ NOMBRE CORRECTO
+SERVICE_NAME = 'sbase'  
 
-print(f"🚀 INICIANDO SERVICIO BASE DE DATOS: {SERVICE_NAME}")
+print(f" INICIANDO SERVICIO BASE DE DATOS: {SERVICE_NAME}")
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.connect(('localhost', 5000))
@@ -59,13 +59,13 @@ if cursor.fetchone()[0] == 0:
 
 # Registrar servicio
 sinit_msg = b'00010sinit' + SERVICE_NAME.encode()
-print(f"📤 Registrando: {sinit_msg}")
+print(f" Registrando: {sinit_msg}")
 sock.sendall(sinit_msg)
 
 length = sock.recv(5)
 if length:
     response = sock.recv(int(length))
-    print(f"📥 Confirmación: {response}")
+    print(f" Confirmación: {response}")
 
 print(f"🎯 {SERVICE_NAME} LISTO - Esperando mensajes...")
 
@@ -75,7 +75,7 @@ try:
         length_data = sock.recv(5)
         
         if not length_data:
-            print("❌ Conexión cerrada")
+            print(" Conexión cerrada")
             break
             
         total_len = int(length_data)
@@ -127,30 +127,30 @@ try:
                     # Procesar resultados
                     if sql.strip().upper().startswith('SELECT'):
                         results = cursor.fetchall()
-                        print(f"✅ Resultados: {len(results)} filas")
+                        print(f" Resultados: {len(results)} filas")
                         response_content = f'{results}'
                     else:
                         conn.commit()
                         response_content = f'{cursor.rowcount} filas afectadas'
                         
                 except Exception as e:
-                    print(f"❌ Error: {e}")
+                    print(f" Error: {e}")
                     response_content = f'ERR|{str(e)}'
                 
                 # Enviar respuesta SIN "OK"
                 full_response = SERVICE_NAME + response_content
                 response_msg = f'{len(full_response):05}'.encode() + full_response.encode()
                 
-                print(f"📤 ENVIANDO RESPUESTA: {response_msg}")
+                print(f"ENVIANDO RESPUESTA: {response_msg}")
                 sock.sendall(response_msg)
-                print("✅ Respuesta enviada exitosamente")
+                print(" Respuesta enviada exitosamente")
             else:
-                print(f"❌ Comando no reconocido: {command}")
+                print(f"Comando no reconocido: {command}")
         else:
-            print(f"⚠️  Formato de mensaje no reconocido: {data}")
+            print(f"  Formato de mensaje no reconocido: {data}")
                 
 except Exception as e:
-    print(f"💥 Error: {e}")
+    print(f" Error: {e}")
     import traceback
     traceback.print_exc()
 finally:
