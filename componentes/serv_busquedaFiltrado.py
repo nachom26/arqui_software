@@ -114,7 +114,7 @@ try:
                                     resultado += f"    Tamaño: {tamaño} bytes\n" 
                                     resultado += f"    Fecha: {fecha}\n"
                                     if '5' in criterios:
-                                        resultado += f"   📁 Ruta: {ruta}\n"
+                                        resultado += f"    Ruta: {ruta}\n"
                                     resultado += "-" * 30 + "\n"
                                 
                                 response = f'OK|{resultado}'
