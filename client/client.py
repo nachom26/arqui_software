@@ -15,6 +15,8 @@ sock.connect(bus_addr)
 # cuando se inicia sesion
 1. configuracion de cuenta
 2. administracion de archivos
+3. busqueda de archivo
+4. historial
 
 #config de cuenta
 1. cambiar nombre
@@ -40,7 +42,7 @@ sock.connect(bus_addr)
 
 
 
-            
+
 
 
     
@@ -88,18 +90,106 @@ def iniciar_sesion():
         return data
 
 def paso2(user_id):
-    
-    print("1. Configuracion de cuenta \n"\
-    "2. Administracion de archivos")
+    print("1. Configuracion de cuenta \n" 
+    "2. Administracion de archivos\n" 
+    "3. Busqueda de archivos\n"    
+    "4. Historial\n")
     accion2 = input("Elige una accion")
     if accion2 == "1":
         config_cuenta(user_id)
-
     elif accion2 == "2":
-        admin_archivos(user_id)
+        admin_archivos()
+    elif accion2 == "3":
+        busquedaFiltrado(user_id)
+    elif accion2 == "4":
+        historial(user_id)
     else:
         print("Accion no valida")
 
+def busquedaFiltrado(user_id):
+    """
+    Selecciona la combinacion de numeros en orden de lo que quieres ver en el archivo buscado:
+    1.- Orden en que ocurrieron los eventos
+    2.- Fecha
+    3.- comportamientos que el archivo a tenido
+    4.- Tamaño
+    5.- Ruta
+    """
+    print("Busqueda y Filtrado de Archivos")
+    
+    nombre_archivo = input("Nombre del archivo a buscar (o dejar en blanco para todos): ")
+    
+    print("Criterios de filtrado:")
+    print("1. Orden en que ocurrieron los eventos")
+    print("2. Fecha")
+    print("3. Comportamientos que el archivo ha tenido")
+    print("4. Tamaño")
+    print("5. Ruta")
+    
+    criterios = input("Ingresa los números de los criterios (ej: 234): ")
+    
+    servicio = 'sbusq'
+    comando = 'searc'
+    payload = f'{user_id}|{nombre_archivo}|{criterios}'
+    
+    longitud_total = len(servicio) + len(comando) + len(payload)
+    longitud_str = str(longitud_total).zfill(5)
+    
+    message = longitud_str.encode() + servicio.encode() + comando.encode() + payload.encode()
+    print(f' Enviando: {message}')
+    
+    sock.sendall(message)
+    
+    amount_received = 0
+    amount_expected = int(sock.recv(5))
+    response_data = b''
+    
+    while amount_received < amount_expected:
+        data = sock.recv(amount_expected - amount_received)
+        response_data += data
+        amount_received += len(data)
+    
+    print("Resultados de búsqueda:")
+    
+    # Procesar respuesta
+    if response_data.startswith(b'OK|'):
+        resultados = response_data[3:].decode()
+        print(resultados)
+    else:
+        print("Error:", response_data.decode())
+
+def historial(user_id):
+    print("Historial de Actividades")
+    
+    servicio = 'shist'
+    comando = 'getH '
+    payload = user_id
+    
+    longitud_total = len(servicio) + len(comando) + len(payload)
+    longitud_str = str(longitud_total).zfill(5)
+    
+    message = longitud_str.encode() + servicio.encode() + comando.encode() + payload.encode()
+    print(f' Enviando: {message}')
+    
+    sock.sendall(message)
+    
+    amount_received = 0
+    amount_expected = int(sock.recv(5))
+    response_data = b''
+    
+    while amount_received < amount_expected:
+        data = sock.recv(amount_expected - amount_received)
+        response_data += data
+        amount_received += len(data)
+    
+    print("Historial obtenido:")
+    
+    #  CORRECCIÓN: El bus envía shistOKdatos (UN solo OK)
+    if response_data.startswith(b'shistOK'):
+        historial_data = response_data[7:].decode()  # Quitar 'shistOK'
+        print(historial_data)
+    else:
+        print("Error:", response_data.decode())
 
 def config_cuenta(user_id):
     print("1. Cambiar nombre \n"\
@@ -257,5 +347,3 @@ try:
 
 finally:
     sock.close()
-
-
