@@ -104,7 +104,7 @@ def paso2(user_id):
     if accion2 == "1":
         config_cuenta(user_id)
     elif accion2 == "2":
-        admin_archivos()
+        admin_archivos(user_id)
     elif accion2 == "3":
         busquedaFiltrado(user_id)
     elif accion2 == "4":
