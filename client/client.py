@@ -1,5 +1,11 @@
+import shlex
 import socket
 import sys
+import re
+import os
+import mimetypes
+import base64
+
 
 from plyer import email
 
@@ -271,79 +277,305 @@ def config_cuenta(user_id):
         print(user_info)
         print(f"ID: {user_info[0]}\nNombre: {user_info[1]}\nEmail: {user_info[2]}\nRol: {user_info[3]}\nFecha de creación: {user_info[4]}")
 
-def admin_archivos():
-    print("1 -> Crear carpeta \n"
-        "2 -> Subir archivo \n"
-        "ls -> Listar archivos \n"
-        "4 -> Descargar archivo \n"
-        "5 -> Eliminar archivo")
-    accion = input("Elige una accion")
-    if accion == "1":
-        nombre_carpeta = input("Nombre de la carpeta")
-        propietario = email
-        carpeta_padre = input("Carpeta padre (opcional, dejar en blanco si no aplica)")
-        length = 15 + len(nombre_carpeta) + len(propietario) + len(carpeta_padre)
-        length_str = str(length).zfill(5)
-        message = length_str.encode() + b'sarchcreatefold' + bytes(f'{nombre_carpeta}|{propietario}|{carpeta_padre}', 'utf-8')
-        sock.sendall(message)
-        amount_received = 0
-        amount_expected = int(sock.recv(5))
-        while amount_received < amount_expected:
-            data = sock.recv (amount_expected - amount_received)
-            amount_received += len (data)
-        print("Respuesta del servidor:", data.decode())
 
-    if accion == "2":
-        ruta_archivo = input("Ruta del archivo a subir")
-        nombre_archivo = ruta_archivo.split('/')[-1]
-        propietario = email
-        carpeta_destino = input("Carpeta destino (opcional, dejar en blanco si no aplica)")
-        try:
-            with open(ruta_archivo, 'rb') as f:
-                contenido = f.read()
-            length = 15 + len(nombre_archivo) + len(propietario) + len(carpeta_destino) + len(contenido)
-            length_str = str(length).zfill(5)
-            message = length_str.encode() + b'sarchuploadfile' + bytes(f'{nombre_archivo}|{propietario}|{carpeta_destino}|', 'utf-8') + contenido
-            sock.sendall(message)
-            amount_received = 0
-            amount_expected = int(sock.recv(5))
-            while amount_received < amount_expected:
-                data = sock.recv (amount_expected - amount_received)
-                amount_received += len (data)
-            print("Respuesta del servidor:", data.decode())
-        except FileNotFoundError:
-            print("Archivo no encontrado. Asegúrate de que la ruta es correcta.")
+def send_request(service, command, payload):
+    length = 15 + len(payload)
+    length_str = str(length).zfill(5)
+
+    if isinstance(payload, bytes):
+        payload_bytes = payload
+    else:
+        payload_bytes = payload.encode()
+
+    total_len = 15 + len(payload_bytes)
+
+    # ⚠️ límite de 5 dígitos
+    if total_len > 99999:
+        raise ValueError(
+            f"Mensaje demasiado grande ({total_len} bytes). "
+            "Con header de 5 dígitos el máximo es 99,999."
+        )
+
+    message = length_str.encode() + service.encode() + command.encode() + payload_bytes
+    sock.sendall(message)
+    amount_received = 0
+    amount_expected = int(sock.recv(5))
+    while amount_received < amount_expected:
+        data = sock.recv (amount_expected - amount_received)
+        amount_received += len (data)
+    return data
+
+def _cmd_mkdir(user_id, args):
+    if len(args) < 1:
+        print("Uso: mkdir <nombre_carpeta> [CARPETA_PADRE]")
+        return
+    nombre_carpeta = args[0]
+    carpeta_padre = args[1] if len(args) > 1 else ''
+    response = send_request('sarch', 'mkdir', f'{nombre_carpeta}|{user_id}|{carpeta_padre}')
+    print("Respuesta del servidor:", response.decode())
+
+def _cmd_rmdir(user_id, args):
+    if len(args) != 1:
+        print("Uso: rmdir <Carpeta>")
+        return
+    carpeta = args[0]
+    response = send_request('sarch', 'rmdir', f'{user_id}|{carpeta}')
+    print("Respuesta del servidor:", response.decode())
+
+
+def _cmd_ls(user_id, args):
+    BLUE = "\033[34m"   # carpetas
+    GREEN = "\033[32m"  # archivos
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+
+    # Validación de argumentos
+    if len(args) > 1:
+        print("Uso: ls [Carpeta]")
+        return
+    carpeta = args[0] if args else ''
+
+    # Petición al servidor
+    response = send_request('sarch', 'lsall', f'{user_id}|{carpeta}')
+    decoded = response.decode(errors='replace').strip()
+
+    if not decoded.startswith('sarchOKOK|'):
+        print(f"Error del servidor: {decoded}")
+        return
+
+    # Extraer carpetas y archivos
+    try:
+        sections = decoded.split('|')
+        folders_str = next((s[8:] for s in sections if s.startswith('FOLDERS:')), '')
+        files_str = next((s[6:] for s in sections if s.startswith('FILES:')), '')
+    except Exception:
+        print("Formato de respuesta inválido.")
+        return
+
+    folders = [f.split(',')[1] for f in folders_str.split('|') if f.strip()]
+    files = [a.split(',')[1] for a in files_str.split('|') if a.strip()]
+
+    # Carpetas en azul y archivos en verde
+    for name in folders:
+        print(f"{BLUE}{name}/{RESET}")
+    for name in files:
+        print(f"{GREEN}{name}{RESET}")
+    print()
+
+
+def _cmd_rm(user_id, args):
+    if len(args) != 1:
+        print("Uso: rm <nombre_archivo>")
+        return
+    archivo_nombre = args[0]
+    response = send_request('sarch', 'rmfil', f'{user_id}|{archivo_nombre}')
+    print("Respuesta del servidor:", response.decode())
+
+
+
+def _cmd_upload(user_id, args):
+    """
+    Uso: upload <ruta_local> [nombre_carpeta]
+    - Envía TODO como texto: metadatos + contenido en Base64 (compatible con bus str-only)
+    - Servidor espera: "nombre|tipo|tamaño|propietario|visibilidad|carpeta|<BASE64>"
+    """
+    GREEN = "\033[32m"; RED = "\033[31m"; RESET = "\033[0m"
+    def ok(msg): print(f"{GREEN}{msg}{RESET}")
+    def err(msg): print(f"{RED}{msg}{RESET}")
+
+    if not (1 <= len(args) <= 2):
+        print("Uso: upload <ruta_local> [nombre_carpeta]")
+        return
+
+    ruta_local = args[0]
+    carpeta_nombre = args[1] if len(args) == 2 else ""  # vacío = raíz
+
+    if '|' in carpeta_nombre:
+        err("El nombre de carpeta no puede contener '|'.")
+        return
+
+    try:
+        with open(ruta_local, 'rb') as f:
+            contenido = f.read()
+    except FileNotFoundError:
+        err(f"Archivo no encontrado: {ruta_local}")
+        return
+    except Exception as e:
+        err(f"No se pudo leer el archivo: {e}")
+        return
+
+    nombre = os.path.basename(ruta_local).strip() or "archivo"
+    if '|' in nombre:
+        err("El nombre de archivo no puede contener '|'.")
+        return
+
+    mime, _ = mimetypes.guess_type(nombre)
+    tipo = mime or 'application/octet-stream'
+    tamaño = len(contenido)
+    visibilidad = 'private'
+
+    # Codificar binario a Base64 (ASCII seguro)
+    contenido_b64 = base64.b64encode(contenido).decode('ascii')
+
+    # Armar payload TODO TEXTO
+    payload = f"{nombre}|{tipo}|{tamaño}|{user_id}|{visibilidad}|{carpeta_nombre}|{contenido_b64}"
+
+    try:
+        resp = send_request('sarch', 'upfil', payload)  # send_request debe aceptar str (lo encodea internamente)
+        decoded = resp.decode(errors='replace').strip()
+    except Exception as e:
+        err(f"Error al enviar: {e}")
+        return
+
+    if decoded.startswith("sarchOKOK|") or decoded.startswith("OK|"):
+        ok(decoded.replace("sarchOKOK|", "").replace("OK|", ""))
+    else:
+        err(decoded)
+
+
+def _cmd_dw(user_id, args):
+    if len(args) != 2:
+        print("Uso: download <id_archivo> <ruta_destino>")
+        return
+    archivo_id, ruta_destino = args
+    response = send_request('sarch', 'dwfil', archivo_id)
+    if response.startswith(b'OK|'):
+        contenido = response[3:].decode('latin1').encode('latin1')
+        with open(ruta_destino, 'wb') as f:
+            f.write(contenido)
+        print(f"Archivo descargado a {ruta_destino}")
+    else:
+        print("Error al descargar archivo:", response.decode())
+
+def _cmd_rename(user_id, args):
+    GREEN = "\033[32m"
+    RED = "\033[31m"
+    RESET = "\033[0m"
+
+    def ok(msg): print(f"{GREEN}{msg}{RESET}")
+    def err(msg): print(f"{RED}{msg}{RESET}")
+
+    if len(args) < 2 or len(args) > 3:
+        print("Uso: rename <nombre_archivo_o_carpeta> <nuevo_nombre> [file | folder]")
+        return
+
+    nombre_actual, nuevo_nombre = args[:2]
+    tipo = args[2] if len(args) == 3 else None
+    nombre_actual = nombre_actual.strip()
+    nuevo_nombre = nuevo_nombre.strip()
+
+    if not nombre_actual or not nuevo_nombre:
+        err("Los nombres no pueden estar vacíos.")
+        return
+
     
-    if accion == "3":
-        propietario = email
-        length = 15 + len(propietario)
-        length_str = str(length).zfill(5)
-        message = length_str.encode() + b'sarchlistfiles' + bytes(f'{propietario}', 'utf-8')
-        sock.sendall(message)
-        amount_received = 0
-        amount_expected = int(sock.recv(5))
-        while amount_received < amount_expected:
-            data = sock.recv (amount_expected - amount_received)
-            amount_received += len (data)
-        print("Respuesta del servidor:", data.decode())
+    payload = f"{nombre_actual}|{nuevo_nombre}|{user_id}|{tipo}"
+    response = send_request("sarch", "renam", payload).decode(errors="replace").strip()
 
-try:
+    if response.startswith("sarchOKOK|"):
+        ok(response.replace("sarchOKOK|", "").replace("OK|", ""))
+    else:
+        err(response)
+
+
+
+def _cmd_mv(user_id, args):
+    if len(args) != 2:
+        print("Uso: mv <id_archivo> <nueva_carpeta>")
+        return
+    archivo_id, nueva_carpeta = args
+    response = send_request('sarch', 'mvfil', f'{archivo_id}|{nueva_carpeta}')
+    print("Respuesta del servidor:", response.decode())
+
+COMMANDS = {
+    'mkdir': _cmd_mkdir,
+    'rmdir': _cmd_rmdir,
+    'ls': _cmd_ls,
+    'rm': _cmd_rm,
+    'upload': _cmd_upload,
+    'download': _cmd_dw,
+    'rename': _cmd_rename,
+    'mv': _cmd_mv,
+    'help': lambda user_id, args: print(
+"""Comandos:
+"
+" mkdir NOMBRE [CARPETA_PADRE]
+"
+" rmdir ID_CARPETA
+"
+" ls [files|folders]
+"
+" rm ID_ARCHIVO
+"
+" upload NOMBRE RUTA [--type=ext] [--size=bytes] [--vis=public|private] [--folder=ID]
+"
+" download ID_ARCHIVO
+"
+" rename (file|folder) ID NUEVO_NOMBRE
+"
+" mv ID_ARCHIVO ID_NUEVA_CARPETA
+"
+" exit / quit
+"""
+            ),
+}
+
+def admin_archivos(user_id):
+    print("Shell de archivos. Escribe 'help' para ver comandos.")
 
     while True:
-
-        data = iniciar_sesion()
-        
-        if data[5:7].decode() == 'OK' and data[7:9].decode() == 'OK':
+        try:
+            line = input("> ")
+        except EOFError:
+            print() # salto de línea al salir con Ctrl-D
+            break
+        except KeyboardInterrupt:
+            print() # salto de línea al salir con Ctrl-C
+            break
+        line = line.strip()
+        if not line:
+            continue
+        if line in ('exit', 'quit'):
+            print("Saliendo de la administracion de archivos.")
             break
 
-        print("Login fallido:", data.decode())
-        
-    user_id = data.split(b'|')[1].decode()
-    print("Login exitoso")
+        try:
+            parts = shlex.split(line)
+        except ValueError as e:
+            print(f"Error al parsear el comando: {e}")
+            continue
 
-    while True:
-        paso2(user_id)
+        cmd, *args = parts
+        handler = COMMANDS.get(cmd)
+        if not handler:
+            print(f"Comando desconocido: {cmd}. Escribe 'help' para ver comandos.")
+            continue
+        try:
+            handler(user_id, args)
+        except Exception as e:
+            print(f"Error al ejecutar el comando '{cmd}': {e}")
 
 
-finally:
-    sock.close()
+if __name__ == "__main__":
+    try:
+
+        while True:
+
+            data = iniciar_sesion()
+            
+            if data[5:7].decode() == 'OK' and data[7:9].decode() == 'OK':
+                break
+
+            print("Login fallido:", data.decode())
+            
+        user_id = data.split(b'|')[1].decode()
+        print("Login exitoso")
+
+        while True:
+            paso2(user_id)
+
+
+    finally:
+        sock.close()
+
+
