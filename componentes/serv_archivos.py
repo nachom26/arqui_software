@@ -306,7 +306,6 @@ try:
                     # envía el texto del error para que lo puedas ver arriba en el cliente
                     response = f'ERR|{str(e)}'
 
-
             elif comando == 'rmfil':
                 # payload: "propietario|archivo_ref" (archivo_ref puede ser ID o nombre)
                 try:
@@ -371,6 +370,7 @@ try:
                 try:
                     # Espera todo en TEXTO por el bus:
                     # "nombre|tipo|tamaño|propietario|visibilidad|carpeta|<BASE64>"
+                    response = ''
                     if not isinstance(payload, str):
                         response = 'ERR|Payload debe ser str (usa Base64 en el cliente)'
                     else:
@@ -539,7 +539,7 @@ try:
                         tipo = ''
                         nombre_actual, nuevo_nombre, propietario = parts
                     elif len(parts) == 4:
-                        tipo, nombre_actual, nuevo_nombre, propietario = parts  # <— CORRECTO: tipo va primero
+                        nombre_actual, nuevo_nombre, propietario, tipo = parts
                         tipo = tipo.lower()
                         if   tipo in ('f', 'file'):   tipo = 'file'
                         elif tipo in ('d', 'folder'): tipo = 'folder'
