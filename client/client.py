@@ -160,7 +160,7 @@ def busquedaFiltrado(user_id):
         resultados = response_data[3:].decode()
         print(resultados)
     else:
-        print("Error:", response_data.decode())
+        print(response_data.decode())
 
 def historial(user_id):
     print("Historial de Actividades")
