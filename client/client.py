@@ -5,8 +5,6 @@ import re
 import os
 import mimetypes
 import base64
-
-
 from plyer import email
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -322,7 +320,6 @@ def _cmd_rmdir(user_id, args):
     response = send_request('sarch', 'rmdir', f'{user_id}|{carpeta}')
     print("Respuesta del servidor:", response.decode())
 
-
 def _cmd_ls(user_id, args):
     BLUE = "\033[34m"   # carpetas
     GREEN = "\033[32m"  # archivos
@@ -362,7 +359,6 @@ def _cmd_ls(user_id, args):
         print(f"{GREEN}{name}{RESET}")
     print()
 
-
 def _cmd_rm(user_id, args):
     if len(args) != 1:
         print("Uso: rm <nombre_archivo>")
@@ -370,8 +366,6 @@ def _cmd_rm(user_id, args):
     archivo_nombre = args[0]
     response = send_request('sarch', 'rmfil', f'{user_id}|{archivo_nombre}')
     print("Respuesta del servidor:", response.decode())
-
-
 
 def _cmd_upload(user_id, args):
     """
@@ -432,20 +426,98 @@ def _cmd_upload(user_id, args):
     else:
         err(decoded)
 
-
 def _cmd_dw(user_id, args):
-    if len(args) != 2:
-        print("Uso: download <id_archivo> <ruta_destino>")
+    """
+    Uso:
+      download <archivo_ref> [ruta_destino]
+    - <archivo_ref> puede ser ID numérico o nombre de archivo.
+    - Si no pasas ruta_destino, se usa el nombre que llega desde el servidor (NAME).
+    - Si ruta_destino es un directorio, guardamos como <ruta_destino>/<NAME>.
+    """
+    GREEN = "\033[32m"; RED = "\033[31m"; RESET = "\033[0m"
+    def ok(msg): print(f"{GREEN}{msg}{RESET}")
+    def err(msg): print(f"{RED}{msg}{RESET}")
+
+    if not (1 <= len(args) <= 2):
+        print("Uso: download <archivo_ref> [ruta_destino]")
         return
-    archivo_id, ruta_destino = args
-    response = send_request('sarch', 'dwfil', archivo_id)
-    if response.startswith(b'OK|'):
-        contenido = response[3:].decode('latin1').encode('latin1')
-        with open(ruta_destino, 'wb') as f:
-            f.write(contenido)
-        print(f"Archivo descargado a {ruta_destino}")
+
+    archivo_ref = args[0]
+    ruta_destino_arg = args[1] if len(args) == 2 else None
+
+    # 1) Pedir al servidor: payload "propietario|archivo_ref"
+    payload = f"{user_id}|{archivo_ref}"
+    resp = send_request('sarch', 'dwfil', payload)
+    decoded = resp.decode('utf-8', errors='replace').strip()
+
+    # 2) Validar respuesta
+    if decoded.startswith('sarchOKOK|'):
+        decoded = decoded[len('sarchOKOK|'):]
+    elif decoded.startswith('OK|'):
+        decoded = decoded[3:]
     else:
-        print("Error al descargar archivo:", response.decode())
+        err(f"Error del servidor: {decoded}")
+        return
+
+    # 3) Separar metadatos de B64
+    #    Estructura: NAME:...|TYPE:...|SIZE:...|DATE:...|B64:<base64>
+    #    Cortamos por '|B64:' para no romper el base64 si trae '|'
+    try:
+        meta_part, b64_part = decoded.split('|B64:', 1)
+    except ValueError:
+        err("Respuesta inválida (no se encontró B64).")
+        return
+
+    # Parsear metadatos
+    meta = {}
+    for chunk in meta_part.split('|'):
+        if ':' in chunk:
+            k, v = chunk.split(':', 1)
+            meta[k] = v
+
+    name = meta.get('NAME') or 'archivo'
+    mime = meta.get('TYPE') or 'application/octet-stream'
+    size_s = meta.get('SIZE') or '0'
+    try:
+        size_expected = int(size_s)
+    except ValueError:
+        size_expected = None
+
+    # 4) Decodificar base64
+    try:
+        data = base64.b64decode(b64_part, validate=True)
+    except Exception as e:
+        err(f"Base64 inválido: {e}")
+        return
+
+    if size_expected is not None and size_expected != len(data):
+        err(f"Tamaño no coincide (esperado={size_expected}, recibido={len(data)}).")
+        return
+
+    # 5) Resolver ruta de guardado
+    if ruta_destino_arg is None or ruta_destino_arg.strip() == '':
+        # Guardar con el nombre que vino del server en el directorio actual
+        ruta_destino = os.path.abspath(name)
+    else:
+        ruta_destino_arg = os.path.abspath(ruta_destino_arg)
+        if os.path.isdir(ruta_destino_arg):
+            ruta_destino = os.path.join(ruta_destino_arg, name)
+        else:
+            # Si no existe el dir padre, créalo
+            parent = os.path.dirname(ruta_destino_arg)
+            if parent and not os.path.exists(parent):
+                os.makedirs(parent, exist_ok=True)
+            ruta_destino = ruta_destino_arg
+
+    # 6) Escribir archivo
+    try:
+        with open(ruta_destino, 'wb') as f:
+            f.write(data)
+    except Exception as e:
+        err(f"No se pudo escribir el archivo: {e}")
+        return
+
+    ok(f"Archivo descargado en: {ruta_destino}  ({len(data)} bytes, {mime})")
 
 def _cmd_rename(user_id, args):
     GREEN = "\033[32m"
@@ -477,14 +549,12 @@ def _cmd_rename(user_id, args):
     else:
         err(response)
 
-
-
 def _cmd_mv(user_id, args):
     if len(args) != 2:
-        print("Uso: mv <id_archivo> <nueva_carpeta>")
+        print("Uso: mv <nombre archivo|carpeta> <nueva_carpeta>")
         return
-    archivo_id, nueva_carpeta = args
-    response = send_request('sarch', 'mvfil', f'{archivo_id}|{nueva_carpeta}')
+    nombre_archivo_o_carpeta, nueva_carpeta = args
+    response = send_request('sarch', 'movef', f'{user_id}|{nombre_archivo_o_carpeta}|{nueva_carpeta}')
     print("Respuesta del servidor:", response.decode())
 
 COMMANDS = {
@@ -498,23 +568,14 @@ COMMANDS = {
     'mv': _cmd_mv,
     'help': lambda user_id, args: print(
 """Comandos:
-"
-" mkdir NOMBRE [CARPETA_PADRE]
-"
-" rmdir ID_CARPETA
-"
-" ls [files|folders]
-"
-" rm ID_ARCHIVO
-"
-" upload NOMBRE RUTA [--type=ext] [--size=bytes] [--vis=public|private] [--folder=ID]
-"
-" download ID_ARCHIVO
-"
-" rename (file|folder) ID NUEVO_NOMBRE
-"
-" mv ID_ARCHIVO ID_NUEVA_CARPETA
-"
+" mkdir <nombre_carpeta> [CARPETA_PADRE]
+" rmdir <Carpeta>
+" ls [Carpeta]
+" rm <nombre_archivo>
+" upload <ruta_local> [nombre_carpeta]
+" download <archivo_ref> [ruta_destino]
+" rename <nombre_archivo_o_carpeta> <nuevo_nombre> [file | folder]
+" mv <nombre archivo|carpeta> <nueva_carpeta>
 " exit / quit
 """
             ),

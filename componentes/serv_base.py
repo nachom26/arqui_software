@@ -13,14 +13,14 @@ cursor = conn.cursor()
 
 # Tablas básicas
 cursor.execute('''
-    CREATE TABLE IF NOT EXISTS usuarios(   
-        id_usuario INTEGER PRIMARY KEY AUTOINCREMENT,
-        nombre TEXT UNIQUE,
-        email TEXT UNIQUE,
-        contraseña TEXT,
-        rol TEXT,
-        fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP
-    )''')
+            CREATE TABLE IF NOT EXISTS usuarios(   
+                id_usuario INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT UNIQUE,
+                email TEXT UNIQUE,
+                contraseña TEXT,
+                rol TEXT,
+                fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP
+            )''')
 
 cursor.execute('''
     CREATE TABLE IF NOT EXISTS historial (
@@ -32,17 +32,27 @@ cursor.execute('''
     )''')
 
 cursor.execute('''
-    CREATE TABLE IF NOT EXISTS archivo(   
-        id_archivo INTEGER PRIMARY KEY AUTOINCREMENT,
-        nombre TEXT,
-        tipo TEXT,
-        tamaño INTEGER,
-        fecha_subida DATETIME DEFAULT CURRENT_TIMESTAMP,
-        propietario INTEGER REFERENCES usuarios(id_usuario),
-        visibilidad TEXT,
-        carpeta INTEGER REFERENCES carpeta(id_carpeta),
-        ruta TEXT
-    )''')
+            CREATE TABLE IF NOT EXISTS carpeta(
+                id_carpeta INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT NOT NULL,
+                propietario INTEGER REFERENCES usuarios(id_usuario),
+                carpeta_padre INTEGER REFERENCES carpeta(id_carpeta) ON DELETE CASCADE,
+                UNIQUE(nombre, propietario)
+            )''')
+
+cursor.execute('''
+            CREATE TABLE IF NOT EXISTS archivo(   
+                id_archivo INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT NOT NULL,
+                tipo TEXT NOT NULL,
+                tamaño INTEGER NOT NULL,
+                fecha_subida DATETIME DEFAULT CURRENT_TIMESTAMP,
+                propietario INTEGER REFERENCES usuarios(id_usuario),
+                visibilidad TEXT,
+                carpeta INTEGER REFERENCES carpeta(id_carpeta) ON DELETE CASCADE,
+                ruta TEXT NOT NULL,
+                UNIQUE(nombre, propietario)
+            )''')
 
 # Insertar datos de prueba
 cursor.execute("SELECT COUNT(*) FROM historial")
