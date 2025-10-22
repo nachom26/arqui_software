@@ -5,7 +5,7 @@ import re
 import os
 import mimetypes
 import base64
-from plyer import email
+#from plyer import email
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 bus_addr = ('localhost', 5000)
@@ -617,24 +617,155 @@ def admin_archivos(user_id):
             print(f"Error al ejecutar el comando '{cmd}': {e}")
 
 
-if __name__ == "__main__":
+SERVICE_TAG = '_tag_'
+
+def crear_etiqueta(user_id):
+    nombre = input("Ingrese nombre de la etiqueta: ")
+    color = input("Ingrese color (por ejemplo #FF0000 o azul): ")
+    payload = f"{user_id}|{nombre}|{color}"
+    response = send_request(SERVICE_TAG, "creat", payload)
+    print(f" Respuesta: {response}")
+
+def ver_etiquetas(user_id):
+    response = send_request(SERVICE_TAG, "read ", str(user_id))
+    print(f" Etiquetas del usuario {user_id}:")
+    print(response)
+
+def actualizar_etiqueta(user_id):
+    id_etiqueta = input("Ingrese ID de la etiqueta a actualizar: ")
+    nuevo_nombre = input("Nuevo nombre: ")
+    nuevo_color = input("Nuevo color: ")
+    payload = f"{user_id}|{id_etiqueta}|{nuevo_nombre}|{nuevo_color}"
+    response = send_request(SERVICE_TAG, "updat", payload)
+    print(f" Respuesta: {response}")
+
+def eliminar_etiqueta(user_id):
+    id_etiqueta = input("Ingrese ID de la etiqueta a eliminar: ")
+    payload = f"{user_id}|{id_etiqueta}"
+    response = send_request(SERVICE_TAG, "del  ", payload)
+    print(f" Respuesta: {response}")
+
+def vincular_etiqueta():
+    id_archivo = input("Ingrese ID del archivo: ")
+    id_etiqueta = input("Ingrese ID de la etiqueta: ")
+    payload = f"{id_archivo}|{id_etiqueta}"
+    response = send_request(SERVICE_TAG, "link ", payload)
+    print(f" Respuesta: {response}")
+
+def listar_etiquetas_archivo():
+    id_archivo = input("Ingrese ID del archivo: ")
+    response = send_request(SERVICE_TAG, "listr", id_archivo)
+    print(f" Etiquetas asociadas al archivo {id_archivo}:")
+    print(response)
+
+
+def menu_etiquetas(user_id):
+
+    print("🟦 CLIENTE DE ETIQUETAS CONECTADO AL BUS 🟦")
+
+    #user_id = input("Ingrese su ID de usuario: ")
+
+    while True:
+        print("\n📘 MENÚ DE ETIQUETAS")
+        print("1. Crear etiqueta")
+        print("2. Ver etiquetas del usuario")
+        print("3. Actualizar etiqueta")
+        print("4. Eliminar etiqueta")
+        print("5. Vincular etiqueta a archivo")
+        print("6. Listar etiquetas de un archivo")
+        print("7. Salir")
+
+        opcion = input("Seleccione una opción: ")
+
+        if opcion == "1":
+            crear_etiqueta(user_id)
+        elif opcion == "2":
+            ver_etiquetas(user_id)
+        elif opcion == "3":
+            actualizar_etiqueta(user_id)
+        elif opcion == "4":
+            eliminar_etiqueta(user_id)
+        elif opcion == "5":
+            vincular_etiqueta()
+        elif opcion == "6":
+            listar_etiquetas_archivo()
+        elif opcion == "7":
+            print("Saliendo del cliente de etiquetas")
+            break
+        else:
+            print("Opción no válida")
+
+
+def admin_menu(user_id):
+    while True:
+        print("\n----MENU ADMINISTRADOR ----")
+        print("1. Eliminar cuenta de usuario")
+        print("2. Consultar información de usuario")
+        print("3. Listar usuarios")
+        print("4. Salir")
+
+        opcion = input("Selecciona una opción: ")
+
+
+        if opcion == '1':
+            target_id = input("ID del usuario a eliminar: ")
+            payload = f"{user_id}|{target_id}"
+            response = send_request('admin', 'delac', payload).decode()
+            print(" Respuesta:", response)
+
+        elif opcion == '2':
+            target_id = input("ID del usuario a consultar: ")
+            payload = f"{user_id}|{target_id}"
+            response = send_request('admin', 'ginfo', payload)
+            print(" Respuesta:", response)
+
+        elif opcion == '4':
+            print(" Saliendo del modo administrador...")
+            break
+
+        elif opcion == '3':
+            response = send_request('admin', 'listu', '').decode()
+            print(response)
+            if response.startswith('adminOKOK|'):
+                users = response[3:].split('|')
+                print("\nID | Nombre")
+                print("-"*20)
+                for u in users:
+                    if not u.strip() or ':' not in u:  
+                        continue
+                    uid, name = u.split(':', 1)
+                    print(f"{uid:<3} | {name}")
+            else:
+                print(" Error al listar usuarios:", response)
+
+
+
+if __name__ == "__main__": 
     try:
-
         while True:
-
             data = iniciar_sesion()
-            
-            if data[5:7].decode() == 'OK' and data[7:9].decode() == 'OK':
+
+            text = data.decode()
+
+            if text.startswith("sauthOKOK|"):
+                parts = text.split('|')
+
+                user_id = parts[1]
+                rol = parts[2].strip() if len(parts) > 2 else "user"
+
+                print(f" Login exitoso. Usuario ID: {user_id}, Rol: {rol}")
+
+                if rol == "1":
+                    print("Bienvenido al menu de administrador")
+                    admin_menu(user_id)
+                else:
+                    print("Bienvenido al menu de usuario")
+                    paso2(user_id)
+
                 break
 
-            print("Login fallido:", data.decode())
-            
-        user_id = data.split(b'|')[1].decode()
-        print("Login exitoso")
-
-        while True:
-            paso2(user_id)
-
+            else:
+                print("Login fallido:", text)
 
     finally:
         sock.close()
