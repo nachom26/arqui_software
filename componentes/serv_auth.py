@@ -123,7 +123,7 @@ try:
                         if not nombre or not email or not contraseña:
                             response = 'ERR|Nombre, email y contraseña son obligatorios'
                         else:
-                            rol = (rol or 'user').strip().lower()
+                            rol = (rol or 'usuario').strip().lower()
 
                             # 1) INSERT vía sbase
                             try:
@@ -144,16 +144,17 @@ try:
                                         [],
                                         service='sbase'
                                     )
-                                    # rows típicamente: [(123,)]
                                     if rows and len(rows[0]) >= 1:
                                         user_id = rows[0][0]
-                                        response = f'OK|{user_id}'
+                                        # Ahora devolvemos también el rol
+                                        response = f'OK|{user_id}|{rol}'
                                     else:
                                         response = 'ERR|No se pudo recuperar el id (LAST_INSERT_ROWID vacío)'
                                 except Exception as e:
                                     response = f'ERR|No se pudo recuperar el id: {e}'
                 except Exception as e:
                     response = f'ERR|{str(e)}'
+
 
 
 
@@ -168,17 +169,17 @@ try:
                         if not email or not contraseña:
                             response = 'ERR|Email y contraseña son obligatorios'
                         else:
-                            # Consulta vía servicio sbase
+                            # Consulta vía servicio sbase: buscamos id y rol
                             rows = db_query(
                                 sock,
-                                'SELECT id_usuario FROM usuarios WHERE email = ? AND contraseña = ?',
+                                'SELECT id_usuario, rol FROM usuarios WHERE email = ? AND contraseña = ?',
                                 [email, contraseña],
                                 service='sbase'
                             )
 
                             if rows:
-                                user_id = rows[0][0]
-                                response = f'OK|{user_id}'
+                                user_id, rol = rows[0]
+                                response = f'OK|{user_id}|{rol}'
                                 # Registrar en historial (best effort)
                                 try:
                                     db_query(
@@ -204,6 +205,7 @@ try:
 
                 except Exception as e:
                     response = f'ERR|{str(e)}'
+
 
             elif comando == 'cpass':
                 # payload: "id_usuario|nueva_contraseña"
