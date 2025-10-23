@@ -97,7 +97,8 @@ def paso2(user_id):
     print("1. Configuracion de cuenta \n" 
     "2. Administracion de archivos\n" 
     "3. Busqueda de archivos\n"    
-    "4. Historial\n")
+    "4. Historial\n"
+    "5. Etiquetas")
     accion2 = input("Elige una accion")
     if accion2 == "1":
         config_cuenta(user_id)
@@ -107,6 +108,8 @@ def paso2(user_id):
         busquedaFiltrado(user_id)
     elif accion2 == "4":
         historial(user_id)
+    elif accion2 == "5":
+        menu_etiquetas(user_id)
     else:
         print("Accion no valida")
 
@@ -161,7 +164,7 @@ def busquedaFiltrado(user_id):
         print(resultados)
     else:
         print(response_data.decode())
-
+#
 def historial(user_id):
     print("Historial de Actividades")
     
