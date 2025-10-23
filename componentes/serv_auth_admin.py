@@ -71,7 +71,7 @@ try:
         if not data.startswith(service.encode()):
             continue  
 
-        print("🟦 Mensaje recibido:", data)
+        print("Mensaje recibido:", data)
         comando = data[len(service):len(service)+5].decode().strip()
         payload = data[len(service)+5:].decode().strip()
         response = ""
@@ -112,7 +112,7 @@ try:
         # enviar respuesta al bus
         response_msg = f'{len(response):05}{service}{response}'.encode()
         sock.sendall(response_msg)
-        print("📤 Respuesta enviada:", response)
+        print("Respuesta enviada:", response)
 
 finally:
     print("Cerrando socket.")

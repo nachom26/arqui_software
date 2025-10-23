@@ -287,7 +287,7 @@ def send_request(service, command, payload):
 
     total_len = 15 + len(payload_bytes)
 
-    # ⚠️ límite de 5 dígitos
+    # límite de 5 dígitos
     if total_len > 99999:
         raise ValueError(
             f"Mensaje demasiado grande ({total_len} bytes). "
@@ -661,12 +661,12 @@ def listar_etiquetas_archivo():
 
 def menu_etiquetas(user_id):
 
-    print("🟦 CLIENTE DE ETIQUETAS CONECTADO AL BUS 🟦")
+    print(" CLIENTE DE ETIQUETAS")
 
     #user_id = input("Ingrese su ID de usuario: ")
 
     while True:
-        print("\n📘 MENÚ DE ETIQUETAS")
+        print("\n MENÚ DE ETIQUETAS")
         print("1. Crear etiqueta")
         print("2. Ver etiquetas del usuario")
         print("3. Actualizar etiqueta")
